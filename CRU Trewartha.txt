@@ -1,0 +1,495 @@
+var countries = ee.FeatureCollection('FAO/GAUL_SIMPLIFIED_500m/2015/level0');
+var country = countries.filter(ee.Filter.eq('ADM0_CODE',132));
+
+// Import your multiband image with Temperature
+var multibandImageP = ee.Image("users/yessimkhanovakalamkas/pr_monthly_CRU");
+var multibandImageT = ee.Image("users/yessimkhanovakalamkas/tmean_monthly_CRU");//print(multibandImageP);
+//print(multibandImageT);
+
+
+var projectionInfoP = multibandImageP.projection();
+//print('Resolution Precip:', projectionInfoP.nominalScale());
+
+var projectionInfoT = multibandImageT.projection();
+//print('Resolution Temp:', projectionInfoT.nominalScale());
+
+var startYear = 1901;
+var endYear = 2020;
+
+var years = ee.List.sequence(startYear, endYear);
+
+var yearlyImagesP = ee.ImageCollection([]);
+var yearlyImagesT = ee.ImageCollection([]);
+var yearlyImages = ee.ImageCollection([]);
+
+years.getInfo().forEach(function (year) {
+  var startBand = (year - 1901) * 12;
+  var endBand = startBand + 11;
+  
+  // Extract the 12 bands (months) for the current year
+  var yearImageP = multibandImageP.select(ee.List.sequence(startBand, endBand));
+  yearImageP=yearImageP.rename(['p1','p2','p3','p4','p5','p6','p7','p8','p9','p10','p11','p12']);
+        
+        var totalPrecip = yearImageP.reduce(ee.Reducer.sum())
+                                    .rename('totalprecip');
+      yearImageP=yearImageP.addBands(totalPrecip);
+        
+        var minPrecip = yearImageP.reduce(ee.Reducer.min())
+                                  .rename('minprecip');
+      yearImageP=yearImageP.addBands(minPrecip);
+       
+        var maxPrecip = yearImageP.reduce(ee.Reducer.max())
+                                  .rename('maxprecip');
+      yearImageP=yearImageP.addBands(maxPrecip);
+      
+        var summerPrecip = yearImageP.select(['p4','p5','p6', 'p7', 'p8', 'p9'])
+                                      .reduce('sum')
+                                      .rename('summerprecip');
+      yearImageP=yearImageP.addBands(summerPrecip);
+      
+        var winterPrecip = yearImageP.select(['p10', 'p11', 'p12', 'p1', 'p2', 'p3'])
+                                      .reduce('sum')
+                                      .rename('winterprecip');
+      yearImageP=yearImageP.addBands(winterPrecip);
+      
+        var maxWinterPrecip = yearImageP.select(['p10', 'p11', 'p12', 'p1', 'p2', 'p3'])
+                                        .reduce('max')
+                                        .rename('maxwinterprecip');
+      yearImageP=yearImageP.addBands(maxWinterPrecip);
+      
+        var minWinterPrecip = yearImageP.select(['p10', 'p11', 'p12', 'p1', 'p2', 'p3'])
+                                        .reduce('min')
+                                        .rename('minwinterprecip');
+      yearImageP=yearImageP.addBands(minWinterPrecip);
+        
+        var maxSummerPrecip = yearImageP.select(['p4','p5','p6', 'p7', 'p8', 'p9'])
+                                        .reduce('max')
+                                        .rename('maxsummerprecip');
+      yearImageP=yearImageP.addBands(maxSummerPrecip);
+      
+        var minSummerPrecip = yearImageP.select(['p4','p5','p6', 'p7', 'p8', 'p9'])
+                                        .reduce('min')
+                                        .rename('minsummerprecip');
+      yearImageP=yearImageP.addBands(minSummerPrecip);
+      
+        var dryMonthsWinterN = yearImageP.select(['p10', 'p11', 'p12', 'p1', 'p2', 'p3'])
+                                        .lte(60)
+                                        .reduce('sum');
+      yearImageP=yearImageP.addBands(dryMonthsWinterN.rename('drymonthswinterN'));
+
+        var dryMonthsWinterS = yearImageP.select(['p4','p5','p6', 'p7', 'p8', 'p9'])
+                                        .lte(60)
+                                        .reduce('sum');
+      yearImageP=yearImageP.addBands(dryMonthsWinterS.rename('drymonthswinterS'));
+      
+  var yearImageT = multibandImageT.select(ee.List.sequence(startBand, endBand));
+  yearImageT=yearImageT.rename(['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12']);
+  
+        var avgTemp = yearImageT.reduce(ee.Reducer.mean())
+          .rename('avgtemp');
+        
+        var minTemp = yearImageT.reduce(ee.Reducer.min())
+          .rename('mintemp');
+       
+        var maxTemp = yearImageT.reduce(ee.Reducer.max())
+          .rename('maxtemp');
+      
+        var monthsGreaterThan10 = yearImageT.gte(10).reduce('sum');
+        
+        
+    yearImageT=yearImageT.addBands(avgTemp);
+    yearImageT=yearImageT.addBands(minTemp);
+    yearImageT=yearImageT.addBands(maxTemp);
+    yearImageT=yearImageT.addBands(monthsGreaterThan10.rename('tenplusmonths'));
+    
+    
+  
+  // Set a property to store the year information
+  yearImageP = yearImageP.set('year', year);
+  yearImageT = yearImageT.set('year', year);
+  
+  var yearTogether = yearImageP.addBands(yearImageT);
+  // Add the yearly image to the collection
+  yearlyImagesP = yearlyImagesP.merge(yearImageP);
+  yearlyImagesT = yearlyImagesT.merge(yearImageT);
+  yearlyImages = yearlyImages.merge(yearTogether);
+});
+
+// Print the image collection
+//print('Yearly Images Collection:Precip', yearlyImagesP); 
+//print('Yearly Images Collection:Temp', yearlyImagesT);
+//print('Yearly Images Collection together', yearlyImages);
+
+var finalyearlyImages=yearlyImages.mean();
+//print(finalyearlyImages)
+//Map.addLayer(finalyearlyImages.select('tenplusmonths'))
+
+var zonecodes=['-',
+    'Ar/Ac','Aw','Bw', 'Bs', // 1-4
+    'Cf','Cs','Dc','Do', // 5-8
+    'Eo','Ec','Ft','Fi' // 9-12
+    ]; 
+    
+// Dictionary mapping zone codes to names
+var zoneNames = {
+  '-': 'No data',
+  'Ar/Ac': 'Tropical Rainforest (equatorial)',
+  'Aw': 'Tropical Savanna (tropical wet and dry)',
+  'Bw': 'Arid (desert)',
+  'Bs': 'Steppe (semi-arid)',
+  'Cf': 'Subarctic or Boreal (cool temperate)',
+  'Cs': 'Temperate (temperate with dry summer)',
+  'Dc': 'Cold Continental (subarctic, severe winter)',
+  'Do': 'Subarctic or Boreal (cool temperate, severe winter)',
+  'Eo': 'Polar Tundra (polar, no true summer)',
+  'Ec': 'Polar Ice Cap (polar, perpetual ice)',
+  'Ft': 'Tundra (polar, true summer)',
+  'Fi': 'Ice Cap (polar, no true summer, permanent ice)'
+};
+    
+    
+var colors=["black",
+  "FF0000", "F08080", "FFFF00", "FF8C00", // 1-4
+  "2E8B57","ADFF2F","00BFFF", "98FB98", // 5-8
+  "4169E1","0000FF","A9A9A9","00FFFF", // 9-12
+  ]; 
+
+var nhemi=ee.Image.pixelLonLat().select('latitude').gt(0);
+
+function trewarthaClass(image) {
+  var mintemp=image.select('mintemp');
+  var maxtemp=image.select('maxtemp');
+  var avgtemp=image.select('avgtemp');
+  var tenplus=image.select('tenplusmonths');
+  var tenless=image.select('tenlessmonths');
+  var zeroplus=image.select('zeroplusmonths');
+  var zeroless=image.select('zerolessmonths');
+  var minprecip=image.select('minprecip');
+  var maxprecip=image.select('maxprecip');
+  var minsprecip=image.select('minsprecip').multiply(nhemi)
+                          .add(image.select('minwprecip').multiply(nhemi.not()));
+  var maxsprecip=image.select('maxsprecip').multiply(nhemi)
+                          .add(image.select('maxwprecip').multiply(nhemi.not()));
+  var minwprecip=image.select('minwprecip').multiply(nhemi)
+                          .add(image.select('minsprecip').multiply(nhemi.not()));
+  var maxwprecip=image.select('maxwprecip').multiply(nhemi)
+                          .add(image.select('maxsprecip').multiply(nhemi.not()));
+  var drywinter=image.select('drymonthswinterN').multiply(nhemi)
+                          .add(image.select('drymonthswinterS').multiply(nhemi.not()));
+  var precip=image.select('totalprecip');
+  var monsoonminimum=precip.divide(-25).add(100); // 100-totalprecip/25
+  var sprecip=image.select('summerprecip');
+  var wprecip=image.select('winterprecip');
+  
+  var winterprecip=wprecip.multiply(nhemi).add(precip.subtract(wprecip).multiply(nhemi.not()));
+  
+  
+  // determining which season is the summer and select that half year's precipitation
+  var summerprecip=sprecip.multiply(nhemi)
+                          .add(precip.subtract(sprecip).multiply(nhemi.not()));
+  var summerratio=summerprecip.divide(precip);
+  
+  var aridthreshold = ((avgtemp.subtract(10)).multiply(10)).add(summerratio.multiply(300));
+                  
+                                                
+             // Group B - Dry climates 
+var B=maxtemp.gt(10).and(precip.lt(aridthreshold.multiply(2)));
+var BW=B.and(precip.lt(aridthreshold));
+var BS=B.and(precip.gte(aridthreshold));
+
+            // Ar     Tropical wet: all months average above 18°C (64.4°F) and no dry season                             
+var A=B.not().and(mintemp.gte(18));
+
+            // Aw    Tropical wet-dry: same as AR but at least 2 months dry in winter
+var Aw=A.and(drywinter.gte(2));
+var Ar=A.and(Aw.not())
+
+              // Cs Subtropical dry summer (Mediterranean): 8 months average above 10°C (50°F), coldest month average below 18°C (64.4°F), and a dry summer
+var C=B.not().and(tenplus.gt(7)).and(mintemp.lt(18));
+var Cs=C.and(precip.lt(890)).and(summerprecip.lte(0));
+
+              //Cf Subtropical humid: same as Cs but no dry season
+var Cf=C.and(precip.gt(0)).and(Cs.not());
+
+              //Do Temperate oceanic: 4-7 months average above 10°C (50°F), coldest month average above 0°C (32°F)
+var D=B.not().and(tenplus.gte(4)).and(tenplus.lte(7));
+var Do=D.and(mintemp.gte(0));
+
+              //Dc Temperate continental: same as Do but with the coldest month average below 0°C (32°F)
+var Dc=D.and(Do.not());
+//var Dc=D.and(mintemp.lt(0))
+
+              //E Boreal or subarctic: Up to 3 months average above 10°C (50°F)
+var E=tenplus.lt(4).and(tenplus.gt(0));
+var Eo=E.and(mintemp.gt(-10));
+var Ec=E.and(Eo.not());
+
+              //Fi Polar ice cap: all months average below 0°C (32°F)
+var Fi=maxtemp.lt(0);
+
+              //Ft Tundra: all months average below 10°C (50°F)
+var Ft=maxtemp.lte(10).and(Fi.not());
+
+
+
+var classes=Ar.multiply(1)
+                .add(Aw.multiply(2))
+                .add(BW.multiply(3))
+                .add(BS.multiply(4))
+                .add(Cf.multiply(5))
+                .add(Cs.multiply(6))
+                .add(Dc.multiply(7))
+                .add(Do.multiply(8))
+                .add(Eo.multiply(9))
+                .add(Ec.multiply(10))
+                .add(Ft.multiply(11))
+                .add(Fi.multiply(12))
+  
+  
+  
+    .rename('zone')
+      .set({year:image.get('year')});
+    
+  return classes;
+ }
+ 
+
+function createMap(start, end) {
+  var selectedImagesP = yearlyImagesP.filter(ee.Filter.rangeContains('year', start, end));
+  var selectedImagesT = yearlyImagesT.filter(ee.Filter.rangeContains('year', start, end));
+
+  var finalYearlyImageP = selectedImagesP.mean();
+  var finalYearlyImageT = selectedImagesT.mean();
+
+  var finalYearlyImage = finalYearlyImageP.addBands(finalYearlyImageT);
+
+  var classification = trewarthaClass(finalYearlyImage);
+  var classificationClipped = classification.clip(country);
+
+  return classificationClipped;
+}
+
+
+
+// Create a title label
+var titleLabel = ui.Label({
+  value: 'Trewartha Climate Classification based on CRU data',
+  style: {
+    fontWeight: 'bold',
+    fontSize: '24px',
+    margin: '0px 0 0 0',
+    textAlign: 'center',
+    width: '100%'
+  }
+});
+
+// Create a panel to hold the title label
+var titlePanel = ui.Panel({
+  widgets: [titleLabel],
+  style: {
+    position: 'top-center',
+    width: '50%'
+  }
+});
+
+// Add the title panel to the map
+Map.add(titlePanel);
+Map.centerObject(country);
+
+// Add UI elements for user interaction
+var startYearLabel = ui.Label('Select Start Year:');
+var endYearLabel = ui.Label('Select End Year:');
+
+// Create sliders for selecting start and end years
+var startYearSlider = ui.Slider({
+  min: 1901,
+  max: 2020,
+  value: startYear,
+  step: 1,
+  style: {width: '270px'},
+  onChange: function (value) {
+    startYear = value;
+    
+  }
+});
+
+var endYearSlider = ui.Slider({
+  min: 1901,
+  max: 2020,
+  value: endYear,
+  step: 1,
+  style: {width: '270px'},
+  onChange: function (value) {
+    endYear = value;
+    
+  }
+});
+
+
+// Create the "Generate" button
+var generateButton = ui.Button({
+  label: 'Generate',
+  onClick: function () {
+    // Call the updateMap function with the selected years when the button is clicked
+    startYear = startYearSlider.getValue();
+    endYear = endYearSlider.getValue();
+    
+
+function updateMap() {
+  var selectedMap = createMap(startYear, endYear);
+  
+  Map.layers().set(0, ui.Map.Layer(selectedMap, {
+    bands: 'zone',
+    min: 0,
+    max: 12,
+    palette: colors
+  }));
+
+}
+    updateMap();
+
+  }
+});
+
+// Create a label for the note
+var noteLabel = ui.Label({
+  value: 'Please note that map generation may take some time',
+  style: {
+    fontSize: '12px',
+    color: 'gray',
+    margin: '5px 0',
+  }
+});
+
+// Set up onChange callbacks for sliders
+startYearSlider.onChange(function(value) {
+  // Update the slider label when the slider value changes
+  startYearSlider.setValue('Select Start Year: ' + value);
+});
+
+endYearSlider.onChange(function(value) {
+  // Update the slider label when the slider value changes
+  endYearSlider.setValue('Select End Year: ' + value);
+});
+
+
+// Add sliders and "Generate" button to the sliderPanel
+var sliderPanel = ui.Panel({
+  widgets: [
+    ui.Label('Select Start Year:', { fontSize: '13px', fontWeight: 'bold'}),
+    startYearSlider,
+    
+    ui.Label('Select End Year:', { fontSize: '13px', fontWeight: 'bold'}),
+    endYearSlider, 
+    noteLabel,
+    generateButton
+    
+  ],
+  style: {
+    width: '300px',
+    fontSize: '15px'
+  }
+});
+
+// Move the slider panel to the left side
+sliderPanel.style().set('position', 'top-left');
+
+
+var infoPanel = ui.Panel({
+  widgets: [
+    ui.Label('This Trewartha Climate Classification map is generated using Google Earth Engine and Climatic Research Unit data.', { fontSize: '14px' }),
+    ui.Label('The map classifies climate of Kazakhstan based on monthly mean temperature and precipitation amount parameters. ', { fontSize: '14px' }),
+    ui.Label('More information about methodology DOI [place here]. ', { fontSize: '14px' }),
+    ui.Label('Access the script DOI [place here]. ', { fontSize: '14px' }),
+    ui.Label('This work is part of a doctoral research project conducted by Kalamkas Yessimkhanova, supervised by Dr. Matyas Gede at Eötvös Loránd University, Budapest.', { fontSize: '14px' }),
+    ui.Label('Credit is given to Google Earth Engine for its powerful geospatial analysis capabilities and Climatic Research Unit for providing valuable climate data.', { fontSize: '14px' }),
+    ui.Label('Please contact Kalamkas Yessimkhanova for questions, comments, and feedback.', { fontSize: '12px' }),
+    ui.Label('Email: kalamkasyessimkhanova@gmail.com', { fontSize: '12px', fontWeight: 'bold'}),
+    ui.Label('Use the slider to select the time period for visualizing Trewartha climate maps.', { fontSize: '17px', fontWeight: 'bold'}),
+  ],
+  style: {
+    width: '300px'
+  }
+});
+
+// Combine the info panel and slider panel
+var mainPanel = ui.Panel({
+  widgets: [infoPanel, sliderPanel],
+  style: {
+    position: 'top-left',
+    padding: '5px'
+  }
+});
+
+
+function updateMap() {
+  var selectedMap = createMap(startYear, endYear);
+  
+  Map.layers().set(0, ui.Map.Layer(selectedMap, {
+    bands: 'zone',
+    min: 0,
+    max: 12,
+    palette: colors
+  }));
+
+}
+
+
+  
+var legendPanel = ui.Panel({
+  style: {
+    position: 'bottom-right',
+    padding: '10px'
+  }
+});
+
+
+
+  
+var legendTitle = ui.Label({
+  value: 'Legend',
+  style: {
+    fontWeight: 'bold',
+    fontSize: '18px',
+    margin: '0 0 4px 0',
+    padding: '10px'
+  }
+});
+
+legendPanel.add(legendTitle);
+
+
+var makeRow = function (color, code, name) {
+  var colorBox = ui.Label({
+    style: {
+      backgroundColor: '' + color,
+      padding: '8px',
+      margin: '0 0 4px 0'
+    }
+  });
+
+  var description = ui.Label({
+    value: code + ': ' + name,
+    style: {
+      margin: '0 0 3px 6px'
+      
+    }
+  });
+
+  return ui.Panel({
+    widgets: [colorBox, description],
+   layout: ui.Panel.Layout.Flow('horizontal')
+  });
+};
+
+for (var i = 1; i < 13; i++) {
+  var row = makeRow(colors[i], zonecodes[i], zoneNames[zonecodes[i]]);
+   legendPanel.add(row);
+}
+
+
+// Initialize the map
+
+ui.root.add(mainPanel);
+ui.root.insert(0,legendPanel);
+
